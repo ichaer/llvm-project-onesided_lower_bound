@@ -15,7 +15,7 @@ static const char Letters[] = {
 static const std::size_t LettersSize = sizeof(Letters);
 
 inline std::default_random_engine& getRandomEngine() {
-  static std::default_random_engine RandEngine(std::random_device{}());
+  static std::default_random_engine RandEngine(0);
   return RandEngine;
 }
 
