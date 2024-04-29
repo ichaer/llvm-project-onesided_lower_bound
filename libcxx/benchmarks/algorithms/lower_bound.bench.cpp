@@ -50,15 +50,38 @@ template <class ValueType, class ContainerType>
 struct LowerBound {
   size_t Quantity;
 
-  mutable std::mt19937_64 rng{std::random_device{}()};
+  struct In {
+    In(std::vector<Value<ValueType>>&& v) {
+      const size_t stride = std::max(size_t(1), v.size()/needles.size());
+      for (size_t i=0; i<needles.size(); ++i) {
+        needles[i] = v[i*stride % v.size()];
+      }
+      haystack = ContainerType::sortedFrom(std::move(v));
+    }
+
+    ContainerType::template type<Value<ValueType>> haystack;
+
+    const Value<ValueType>& nextNeedle() const {
+      return needles[pos++ % needles.size()];
+    }
+
+  private:
+    std::array<Value<ValueType>, 512> needles;
+    mutable size_t pos = 0;
+  };
+
+  static const std::vector<In> prepareData(std::vector<std::vector<Value<ValueType>>>&& orig) {
+    std::vector<In> out;
+    out.reserve(orig.size());
+    for (auto& v : orig) {
+      out.emplace_back(std::move(v));
+    }
+    return out;
+  }
 
   void run(benchmark::State& state) const {
-    runOpOnCopies<ValueType>(state, Quantity, Order::Random, BatchSize::CountBatch, [&](auto& Copy) {
-      state.PauseTiming();
-      auto needle = Copy[rng() % Copy.size()];
-      auto in = ContainerType::sortedFrom(std::move(Copy));
-      state.ResumeTiming();
-      auto result = std::lower_bound(in.begin(), in.end(), needle);
+    runOpOnCopiesWithDataFilter<ValueType>(state, Quantity, Order::Random, BatchSize::CountBatch, prepareData, [&](const auto& Copy) {
+      auto result = std::lower_bound(Copy.haystack.begin(), Copy.haystack.end(), Copy.nextNeedle());
       benchmark::DoNotOptimize(result);
     });
   }

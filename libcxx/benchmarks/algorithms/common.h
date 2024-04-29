@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -181,12 +182,16 @@ void sortValues(T& V, Order O) {
 }
 
 constexpr size_t TestSetElements =
+#if !TEST_HAS_FEATURE(memory_sanitizer)
+    1 << 18;
+#else
     1 << 14;
+#endif
 
 template <class ValueType>
 std::vector<std::vector<Value<ValueType> > > makeOrderedValues(size_t N, Order O) {
   std::vector<std::vector<Value<ValueType> > > Ret;
-  const size_t NumCopies = std::max(size_t{512}, TestSetElements / N);
+  const size_t NumCopies = 1024;
   Ret.resize(NumCopies);
   for (auto& V : Ret) {
     fillValues(V, N, O);
@@ -208,10 +213,11 @@ enum class BatchSize {
   CountBatch,
 };
 
-template <class ValueType, class F>
-void runOpOnCopies(benchmark::State& state, size_t Quantity, Order O, BatchSize Count, F Body) {
-  auto Copies = makeOrderedValues<ValueType>(Quantity, O);
-  auto Orig   = Copies;
+template <class ValueType, class F, class DataFilter>
+void runOpOnCopiesWithDataFilter(benchmark::State& state, size_t Quantity, Order O, BatchSize Count, DataFilter dataFilter, F Body) {
+  auto Copies = dataFilter(makeOrderedValues<ValueType>(Quantity, O));
+  constexpr bool CanRestoreCopies = std::is_const_v<decltype(Copies)>;
+  std::optional<decltype(Copies)> Orig = CanRestoreCopies ? std::make_optional(Copies) : std::nullopt;
 
   const size_t Batch = Count == BatchSize::CountElements ? Copies.size() * Quantity : Copies.size();
   while (state.KeepRunningBatch(Batch)) {
@@ -220,9 +226,17 @@ void runOpOnCopies(benchmark::State& state, size_t Quantity, Order O, BatchSize 
       benchmark::DoNotOptimize(Copy);
     }
     state.PauseTiming();
-    Copies = Orig;
+    if constexpr (CanRestoreCopies) {
+      Copies = *Orig;
+    }
     state.ResumeTiming();
   }
+}
+
+template <class ValueType, class F>
+void runOpOnCopies(benchmark::State& state, size_t Quantity, Order O, BatchSize Count, F Body) {
+  auto passthroughFilter = [](auto&& in) {return std::move(in);};
+  runOpOnCopiesWithDataFilter<ValueType>(state, Quantity, O, Count, passthroughFilter, Body);
 }
 
 const std::vector<size_t> Quantities = {
