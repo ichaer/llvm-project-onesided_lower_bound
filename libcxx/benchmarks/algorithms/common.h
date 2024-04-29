@@ -181,16 +181,12 @@ void sortValues(T& V, Order O) {
 }
 
 constexpr size_t TestSetElements =
-#if !TEST_HAS_FEATURE(memory_sanitizer)
-    1 << 18;
-#else
     1 << 14;
-#endif
 
 template <class ValueType>
 std::vector<std::vector<Value<ValueType> > > makeOrderedValues(size_t N, Order O) {
   std::vector<std::vector<Value<ValueType> > > Ret;
-  const size_t NumCopies = std::max(size_t{1}, TestSetElements / N);
+  const size_t NumCopies = std::max(size_t{512}, TestSetElements / N);
   Ret.resize(NumCopies);
   for (auto& V : Ret) {
     fillValues(V, N, O);
